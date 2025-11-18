@@ -1,10 +1,10 @@
 # 🍌 Spinning Banana
 
-A Python ASCII art animation of a spinning banana, evolved from the famous 2006 Andrew Sloan spinning donut code.
+A Banana ASCII art animation of a spinning banana, evolved from the famous 2006 Andrew Sloan spinning donut code.
 
 ## Inspiration
 
-The original donut C code was a masterpiece: efficient trig loops, z-byte buffer depth, all in <200 bytes. This Python version applies similar math to spin 2D ASCII figures.
+The original donut C code was a masterpiece: efficient trig loops, z-byte buffer depth, all in <200 bytes. This banana version applies similar math to spin 2D ASCII figures.
 
 - **Banana**: Parametric curve bend, then 2D ASCII spin for perfect shape consistency.
 
@@ -30,20 +30,30 @@ Rotates art around center, banana stays recognizable.
 
 ## Requirements
 
-Python 3.x (standard library only).
+- **Python version**: `python banana.py` - Python 3.x (standard library only).
+- **C version**: `gcc banana/banana.c -lm -o banana_c; ./banana_c` - GCC (MinGW on Windows).
+- **C++ version**: `g++ banana/banana.cpp -o banana_cpp; ./banana_cpp` - G++ (MinGW on Windows).
 
 ## Running
 
 In terminal:
 
 ```bash
-cd banana
+# Python
 python banana.py
+
+# C
+gcc banana.c -lm -o banana_c
+./banana_c
+
+# C++
+g++ banana.cpp -o banana_cpp
+./banana_cpp
 ```
 
-Ctrl+C to stop infinite spin.
+Ctrl+C to stop infinite spin in any.
 
 ## Output
 
-Yellow ASCII banana spins 360° 
+Yellow ASCII banana spins 360°, shape intact via 2D rotation math in all languages.
 
