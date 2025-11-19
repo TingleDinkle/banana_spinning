@@ -8,7 +8,6 @@ The original donut C code was a masterpiece: efficient trig loops, z-byte buffer
 
 - **Banana**: Parametric curve bend, then 2D ASCII spin for perfect shape consistency.
 
-Math-driven, loop-powered, humor-infused software!
 
 ## Math Used
 
