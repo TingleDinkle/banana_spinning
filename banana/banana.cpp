@@ -44,7 +44,10 @@ size_t max_len = 0;
 // We will refine global init safely.
 
 // Global grid optimization
-vector<string> banana_grid;
+// We use a flat string instead of a vector of strings. This keeps all our banana data
+// in one continuous block of memory, which the CPU loves (Cache Locality).
+string banana_grid_flat;
+int banana_stride; 
 
 double center_y, center_x;
 
@@ -140,6 +143,9 @@ void render_frame(double A, double B, Output& output) {
     int const_x_fp = center_x_fp - ((long long)center_x_fp * cos_fp >> FIXED_SHIFT) + ((long long)center_y_fp * sin_fp >> FIXED_SHIFT);
     int const_y_fp = center_y_fp - ((long long)center_y_fp * cos_fp >> FIXED_SHIFT) - ((long long)center_x_fp * sin_fp >> FIXED_SHIFT);
     
+    int banana_w = (int)max_len;
+    int banana_h = (int)num_lines;
+
     for (int yp = min_yp; yp <= max_yp; yp++) {
         // Calculate row start using fixed point math
         int row_start_x_fp = -(yp * sin_fp) + const_x_fp;
@@ -155,10 +161,9 @@ void render_frame(double A, double B, Output& output) {
             int src_y = running_y_fp >> FIXED_SHIFT;
             
             // If the coordinate hits the banana image, draw it
-            if (src_x >= 0 && src_x < max_len && src_y >= 0 && src_y < num_lines) {
-                if (src_x < banana_grid[src_y].length()) {
-                     output.set(yp, xp, banana_grid[src_y][src_x]);
-                }
+            if (src_x >= 0 && src_x < banana_w && src_y >= 0 && src_y < banana_h) {
+                 // Fast flat array access
+                 output.set(yp, xp, banana_grid_flat[src_y * banana_stride + src_x]);
             }
             
             // Advance the coordinate calculator by one pixel step
@@ -179,7 +184,18 @@ int main() {
 
     // Init Logic
     for (const auto& line : banana_lines) { max_len = max(max_len, line.length()); }
-    banana_grid = banana_lines;
+    
+    // Flatten the grid
+    banana_stride = max_len;
+    banana_grid_flat.resize(num_lines * banana_stride, ' '); // Fill with spaces initially
+    
+    for(size_t i=0; i<num_lines; i++) {
+        // Copy each line into the flat buffer
+        for(size_t j=0; j<banana_lines[i].length(); j++) {
+            banana_grid_flat[i * banana_stride + j] = banana_lines[i][j];
+        }
+    }
+
     center_y = num_lines / 2.0;
     center_x = max_len / 2.0;
 
