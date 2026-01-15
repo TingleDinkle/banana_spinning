@@ -104,20 +104,52 @@ void render_frame(double A, double B, Output& output) {
     int center_x_fp = (int)(center_x * FIXED_ONE);
     int center_y_fp = (int)(center_y * FIXED_ONE);
     
+    // --- BOUNDING BOX OPTIMIZATION ---
+    // Project 4 corners to find min/max render area
+    double cx = center_x;
+    double cy = center_y;
+    double w = (double)max_len;
+    double h = (double)num_lines;
+    
+    double corners_x[] = {-cx, w - cx, -cx, w - cx};
+    double corners_y[] = {-cy, -cy, h - cy, h - cy};
+    
+    int min_xp = SCREEN_WIDTH, max_xp = 0;
+    int min_yp = SCREEN_HEIGHT, max_yp = 0;
+    
+    // Forward transform uses cos(A)=cos_theta, sin(A)=-sin_theta
+    double fwd_cos = cos_theta;
+    double fwd_sin = -sin_theta;
+    
+    for(int i=0; i<4; i++) {
+        double px = corners_x[i] * fwd_cos - corners_y[i] * fwd_sin + cx;
+        double py = corners_x[i] * fwd_sin + corners_y[i] * fwd_cos + cy;
+        
+        if (px < min_xp) min_xp = (int)floor(px);
+        if (px > max_xp) max_xp = (int)ceil(px);
+        if (py < min_yp) min_yp = (int)floor(py);
+        if (py > max_yp) max_yp = (int)ceil(py);
+    }
+    
+    if (min_xp < 0) min_xp = 0;
+    if (max_xp >= SCREEN_WIDTH) max_xp = SCREEN_WIDTH - 1;
+    if (min_yp < 0) min_yp = 0;
+    if (max_yp >= SCREEN_HEIGHT) max_yp = SCREEN_HEIGHT - 1;
+
     // const_x = cx * (1 - cos) + cy * sin
     int const_x_fp = center_x_fp - ((long long)center_x_fp * cos_fp >> FIXED_SHIFT) + ((long long)center_y_fp * sin_fp >> FIXED_SHIFT);
     int const_y_fp = center_y_fp - ((long long)center_y_fp * cos_fp >> FIXED_SHIFT) - ((long long)center_x_fp * sin_fp >> FIXED_SHIFT);
     
-    for (int yp = 0; yp < SCREEN_HEIGHT; yp++) {
+    for (int yp = min_yp; yp <= max_yp; yp++) {
         // Calculate row start using fixed point math
         int row_start_x_fp = -(yp * sin_fp) + const_x_fp;
         int row_start_y_fp =  (yp * cos_fp) + const_y_fp;
         
-        // Initialize running coordinates
-        int running_x_fp = row_start_x_fp;
-        int running_y_fp = row_start_y_fp;
+        // Offset running coordinates to the start of the bounding box
+        int running_x_fp = row_start_x_fp + min_xp * cos_fp;
+        int running_y_fp = row_start_y_fp + min_xp * sin_fp;
         
-        for (int xp = 0; xp < SCREEN_WIDTH; xp++) {
+        for (int xp = min_xp; xp <= max_xp; xp++) {
             // Bit-shift right to get the integer part
             int src_x = running_x_fp >> FIXED_SHIFT;
             int src_y = running_y_fp >> FIXED_SHIFT;
