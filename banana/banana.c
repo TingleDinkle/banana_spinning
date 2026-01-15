@@ -145,10 +145,16 @@ void render_frame(double A, double B) {
     int banana_w = (int)max_len;
     int banana_h = (int)num_lines;
 
+    // --- OUTER LOOP STRENGTH REDUCTION ---
+    // Instead of multiplying inside the loop (e.g., yp * sin_fp), we calculate
+    // the starting value for the first row and just add the step value each iteration.
+    
+    // Initial row start values at min_yp
+    int row_start_x_fp = -(min_yp * sin_fp) + const_x_fp;
+    int row_start_y_fp =  (min_yp * cos_fp) + const_y_fp;
+
     // Render within the bounding box.
     for (int yp = min_yp; yp <= max_yp; yp++) {
-        int row_start_x_fp = -(yp * sin_fp) + const_x_fp;
-        int row_start_y_fp =  (yp * cos_fp) + const_y_fp;
         
         int running_x_fp = row_start_x_fp + min_xp * cos_fp;
         int running_y_fp = row_start_y_fp + min_xp * sin_fp;
@@ -185,6 +191,10 @@ void render_frame(double A, double B) {
         }
         
         #undef RENDER_PIXEL
+        
+        // Advance row start values for the next row (Strength Reduction)
+        row_start_x_fp -= sin_fp;
+        row_start_y_fp += cos_fp;
     }
 
     // Restore newlines cleared by memset.
