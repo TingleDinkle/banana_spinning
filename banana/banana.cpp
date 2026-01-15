@@ -141,14 +141,16 @@ void render_frame(double A, double B, Output& output) {
 
     // --- OUTER LOOP STRENGTH REDUCTION ---
     // Calculate initial row start values at min_yp once.
-    int row_start_x_fp = -(min_yp * sin_fp) + const_x_fp;
-    int row_start_y_fp =  (min_yp * cos_fp) + const_y_fp;
+    // Optimization: Include the X-offset (min_xp) here.
+    int row_start_x_fp = -(min_yp * sin_fp) + const_x_fp + (min_xp * cos_fp);
+    int row_start_y_fp =  (min_yp * cos_fp) + const_y_fp + (min_xp * sin_fp);
 
     // Render within the bounding box.
     for (int yp = min_yp; yp <= max_yp; yp++) {
         
-        int running_x_fp = row_start_x_fp + min_xp * cos_fp;
-        int running_y_fp = row_start_y_fp + min_xp * sin_fp;
+        // Initialize running coordinates directly.
+        int running_x_fp = row_start_x_fp;
+        int running_y_fp = row_start_y_fp;
         
         int xp = min_xp;
 

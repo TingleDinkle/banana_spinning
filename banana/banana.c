@@ -146,18 +146,18 @@ void render_frame(double A, double B) {
     int banana_h = (int)num_lines;
 
     // --- OUTER LOOP STRENGTH REDUCTION ---
-    // Instead of multiplying inside the loop (e.g., yp * sin_fp), we calculate
-    // the starting value for the first row and just add the step value each iteration.
+    // Calculate initial row start values at min_yp once.
+    // Optimization: Include the X-offset (min_xp) here so we don't add it every row.
     
-    // Initial row start values at min_yp
-    int row_start_x_fp = -(min_yp * sin_fp) + const_x_fp;
-    int row_start_y_fp =  (min_yp * cos_fp) + const_y_fp;
+    int row_start_x_fp = -(min_yp * sin_fp) + const_x_fp + (min_xp * cos_fp);
+    int row_start_y_fp =  (min_yp * cos_fp) + const_y_fp + (min_xp * sin_fp);
 
     // Render within the bounding box.
     for (int yp = min_yp; yp <= max_yp; yp++) {
         
-        int running_x_fp = row_start_x_fp + min_xp * cos_fp;
-        int running_y_fp = row_start_y_fp + min_xp * sin_fp;
+        // Initialize running coordinates directly from the pre-calculated start.
+        int running_x_fp = row_start_x_fp;
+        int running_y_fp = row_start_y_fp;
         
         // Direct pointer access for speed.
         char *row_ptr = &output[yp * (SCREEN_WIDTH + 1) + min_xp];
