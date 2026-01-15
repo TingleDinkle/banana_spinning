@@ -4,7 +4,7 @@ An Ultra-Optimized Banana ASCII art animation, evolved from the famous 2006 Andr
 
 ## optimizations
 
-This project implements "Senior Engineer" level optimizations for maximum scalar performance on standard CPUs:
+This project implements high level optimizations for maximum scalar performance on standard CPUs:
 
 1.  **Fixed-Point Arithmetic (16.16):** Replaces slow floating-point math with high-speed integer operations in the hot loop.
 2.  **Bounding Box Rendering:** Calculates the exact screen area the banana occupies per frame and skips rendering ~85% of empty pixels.
