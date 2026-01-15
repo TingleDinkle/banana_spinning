@@ -49,7 +49,7 @@ void cleanup_and_exit(int signo) {
         printf("\nAnimation stopped.\n");
     }
     if (banana_grid) free(banana_grid);
-    printf("\x1b[0m"); // Reset color
+    printf("\x1b[0m\x1b[?25h"); // Reset color, Show cursor
     exit(0);
 }
 
@@ -61,7 +61,7 @@ void init_grid() {
     }
 
     // Allocate contiguous block
-    banana_grid = malloc(num_lines * max_len * sizeof(char));
+    banana_grid = (char *)malloc(num_lines * max_len * sizeof(char));
     if (!banana_grid) exit(1);
     
     // Fill with spaces
@@ -217,6 +217,7 @@ int main() {
     center_x = max_len / 2.0;
 
     printf("\x1b[2J");
+    printf("\x1b[?25l"); // Hide cursor
     printf("\x1b[H");
 
     double A = 0.0;

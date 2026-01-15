@@ -1,4 +1,4 @@
-#include <iostream>
+#include <cstdio>
 #include <vector>
 #include <string>
 #include <cmath>
@@ -40,8 +40,6 @@ vector<string> banana_lines = {
 
 size_t num_lines = banana_lines.size();
 size_t max_len = 0;
-// Note: Loop initialization moved inside main or kept if it works in global scope (it does for this structure)
-// We will refine global init safely.
 
 // Optimize grid memory layout for cache locality.
 string banana_grid_flat;
@@ -50,8 +48,8 @@ int banana_stride;
 double center_y, center_x;
 
 void signalHandler(int signum) {
-    cout << "\nAnimation stopped.\n";
-    cout << "\x1b[0m";
+    printf("\nAnimation stopped.\n");
+    printf("\x1b[0m\x1b[?25h"); // Reset color, Show cursor
     exit(signum);
 }
 
@@ -80,10 +78,10 @@ public:
     }
     
     void print() {
-        // Fast output using cout.write
-        cout << "\x1b[H\x1b[33m";
-        cout.write(buffer.data(), buffer.size());
-        cout << "\x1b[0m";
+        // Fast output using fwrite (replaces cout)
+        printf("\x1b[H\x1b[33m");
+        fwrite(buffer.data(), sizeof(char), buffer.size(), stdout);
+        printf("\x1b[0m");
     }
 };
 
@@ -197,8 +195,7 @@ int main() {
     signal(SIGINT, signalHandler);
 
     // Fast IO
-    ios_base::sync_with_stdio(false);
-    cin.tie(NULL);
+    // stdio is already fast, no sync needed.
 
     // Init Logic
     for (const auto& line : banana_lines) { max_len = max(max_len, line.length()); }
@@ -217,8 +214,9 @@ int main() {
     center_y = num_lines / 2.0;
     center_x = max_len / 2.0;
 
-    cout << "\x1b[2J";
-    cout << "\x1b[H";
+    printf("\x1b[2J");
+    printf("\x1b[?25l"); // Hide cursor
+    printf("\x1b[H");
     
     Output output;
     
