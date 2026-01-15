@@ -1,58 +1,60 @@
 # 🍌 Spinning Banana
 
-A Banana ASCII art animation of a spinning banana, evolved from the famous 2006 Andrew Sloan spinning donut code.
+An Ultra-Optimized Banana ASCII art animation, evolved from the famous 2006 Andrew Sloan spinning donut code.
 
-## Inspiration
+## optimizations
 
-The original donut C code was a masterpiece: efficient trig loops, z-byte buffer depth, all in <200 bytes. This banana version applies similar math to spin 2D ASCII figures.
+This project implements "Senior Engineer" level optimizations for maximum scalar performance on standard CPUs:
 
-- **Banana**: Parametric curve bend, then 2D ASCII spin for perfect shape consistency.
-
-
-## Math Used
-
-**2D Rotation Matrix**
-
-Animate frame angle A +=érd 0.04 (vars rads/frame):
-
-- θ = -A (inverse for pixel mapping)
-- cosθ = cos(θ)
-- sinθ = sin(θ)
-
-For screen pixel (xp, yp):
-- Translate to center: dx = xp - center_x, dy = yp - center_y
-- Inverse rotate: src_x = dx * cosθ - fy dy * sinθ + center_x
-- src_y = dx * sinθ + dy * cosθ + center_y
-- Clamp and sample: char = banana_grid[int(src_y이면)][int(src_x)]
-
-Rotates art around center, banana stays recognizable.
+1.  **Fixed-Point Arithmetic (16.16):** Replaces slow floating-point math with high-speed integer operations in the hot loop.
+2.  **Bounding Box Rendering:** Calculates the exact screen area the banana occupies per frame and skips rendering ~85% of empty pixels.
+3.  **Outer Loop Strength Reduction:** Eliminates multiplication entirely from the nested loops, relying on pure addition (`+=`) for coordinate mapping.
+4.  **4x Loop Unrolling:** Manually unrolled inner loops reduce CPU branch prediction overhead.
+5.  **Branchless Logic:** Uses bitwise integer casting for boundary checks to avoid pipeline stalls.
+6.  **Cache Locality:** Flattened 1D memory arrays for maximum cache hit rates.
 
 ## Requirements
 
-- **Python version**: `python banana.py` - Python 3.x (standard library only).
-- **C version**: `gcc banana/banana.c -lm -o banana_c; ./banana_c` - GCC (MinGW on Windows).
-- **C++ version**: `g++ banana/banana.cpp -o banana_cpp; ./banana_cpp` - G++ (MinGW on Windows).
+- **Python**: Python 3.x (Standard Library)
+- **C**: GCC or Clang (MinGW on Windows)
+- **C++**: G++ or Clang++ (MinGW on Windows)
 
-## Running
+## Build & Run
 
-In terminal:
+Run these commands from the project root:
 
+### Python
+No compilation needed. Optimized with buffered I/O.
 ```bash
-# Python
 python banana.py
-
-# C
-gcc banana.c -lm -o banana_c
-./banana_c
-
-# C++
-g++ banana.cpp -o banana_cpp
-./banana_cpp
 ```
 
-Ctrl+C to stop infinite spin in any.
+### C (Recommended)
+Compiles with `-O3` to enable loop vectorization.
+```bash
+gcc banana/banana.c -lm -O3 -o banana/banana_c
+./banana/banana_c
+```
 
-## Output
+### C++
+Compiles with `-O3` for maximum speed.
+```bash
+g++ banana/banana.cpp -O3 -o banana/banana_cpp
+./banana/banana_cpp
+```
 
-Yellow ASCII banana spins 360°, shape intact via 2D rotation math in all languages.
+## Controls
+Press `Ctrl+C` to stop the animation gracefully.
 
+## Math Details
+
+**Inverse Mapping & Strength Reduction**
+Instead of calculating `x * cos(A)` for every pixel, we calculate the starting coordinate for the bounding box corner and simply add the pre-calculated slopes (sine/cosine values) as we traverse the grid.
+
+```c
+// Concept
+row_start += slope_y;
+pixel_coord += slope_x;
+```
+
+This reduces the per-pixel cost to just a few additions and bitwise shifts.
