@@ -99,17 +99,15 @@ void render_frame(double A, double B) {
     double cos_theta = cos(-A);
     double sin_theta = sin(-A);
     
-    // We use "Fixed Point" math here. Instead of using slow decimals, we multiply 
-    // everything by 65536 and use whole numbers. This is much faster for a computer.
+    // Use fixed-point math (16.16) for performance.
     int cos_fp = (int)(cos_theta * FIXED_ONE);
     int sin_fp = (int)(sin_theta * FIXED_ONE);
     
-    // We find the center of our banana so we can spin it around its middle.
+    // Convert center coordinates to fixed-point.
     int center_x_fp = (int)(center_x * FIXED_ONE);
     int center_y_fp = (int)(center_y * FIXED_ONE);
     
-    // To save time, we calculate exactly where the banana is on the screen.
-    // We don't want to waste energy checking empty black space.
+    // Optimize: Bounding Box rendering to skip empty space.
     double cx = center_x;
     double cy = center_y;
     double w = (double)max_len;
@@ -134,20 +132,20 @@ void render_frame(double A, double B) {
         if (py > max_yp) max_yp = (int)ceil(py);
     }
     
-    // We make sure our "box" doesn't go off the edge of the terminal.
+    // Clamp bounding box to screen dimensions.
     if (min_xp < 0) min_xp = 0;
     if (max_xp >= SCREEN_WIDTH) max_xp = SCREEN_WIDTH - 1;
     if (min_yp < 0) min_yp = 0;
     if (max_yp >= SCREEN_HEIGHT) max_yp = SCREEN_HEIGHT - 1;
 
-    // These values help us map screen pixels back to our banana image.
+    // Precalculate row start constants.
     int const_x_fp = center_x_fp - ((long long)center_x_fp * cos_fp >> FIXED_SHIFT) + ((long long)center_y_fp * sin_fp >> FIXED_SHIFT);
     int const_y_fp = center_y_fp - ((long long)center_y_fp * cos_fp >> FIXED_SHIFT) - ((long long)center_x_fp * sin_fp >> FIXED_SHIFT);
 
     int banana_w = (int)max_len;
     int banana_h = (int)num_lines;
 
-    // We start drawing row by row.
+    // Render within the bounding box.
     for (int yp = min_yp; yp <= max_yp; yp++) {
         int row_start_x_fp = -(yp * sin_fp) + const_x_fp;
         int row_start_y_fp =  (yp * cos_fp) + const_y_fp;
@@ -155,92 +153,46 @@ void render_frame(double A, double B) {
         int running_x_fp = row_start_x_fp + min_xp * cos_fp;
         int running_y_fp = row_start_y_fp + min_xp * sin_fp;
         
-        // We point directly to the spot in memory where this row starts.
+        // Direct pointer access for speed.
         char *row_ptr = &output[yp * (SCREEN_WIDTH + 1) + min_xp];
 
         int xp = min_xp;
         
-        // --- MANUAL LOOP UNROLLING (4x) ---
-        // We manually write out the logic 4 times. This guarantees the compiler
-        // interleaves instructions (calculating next pixel while storing previous).
-        // It also reduces the number of "if (xp <= max)" checks by 75%.
-        
-        for (; xp <= max_xp - 3; xp += 4) {
-            // Pixel 1
-            {
-                int src_x = running_x_fp >> FIXED_SHIFT;
-                int src_y = running_y_fp >> FIXED_SHIFT;
-                if ((unsigned int)src_x < (unsigned int)banana_w && 
-                    (unsigned int)src_y < (unsigned int)banana_h) {
-                    *row_ptr = banana_grid[src_y * banana_w + src_x];
-                }
-                row_ptr++;
-                running_x_fp += cos_fp;
-                running_y_fp += sin_fp;
+        // Manual loop unrolling (4x) to reduce loop overhead.
+        #define RENDER_PIXEL \
+            { \
+                int src_x = running_x_fp >> FIXED_SHIFT; \
+                int src_y = running_y_fp >> FIXED_SHIFT; \
+                if ((unsigned int)src_x < (unsigned int)banana_w && \
+                    (unsigned int)src_y < (unsigned int)banana_h) { \
+                    *row_ptr = banana_grid[src_y * banana_w + src_x]; \
+                } \
+                row_ptr++; \
+                running_x_fp += cos_fp; \
+                running_y_fp += sin_fp; \
             }
-            // Pixel 2
-            {
-                int src_x = running_x_fp >> FIXED_SHIFT;
-                int src_y = running_y_fp >> FIXED_SHIFT;
-                if ((unsigned int)src_x < (unsigned int)banana_w && 
-                    (unsigned int)src_y < (unsigned int)banana_h) {
-                    *row_ptr = banana_grid[src_y * banana_w + src_x];
-                }
-                row_ptr++;
-                running_x_fp += cos_fp;
-                running_y_fp += sin_fp;
-            }
-            // Pixel 3
-            {
-                int src_x = running_x_fp >> FIXED_SHIFT;
-                int src_y = running_y_fp >> FIXED_SHIFT;
-                if ((unsigned int)src_x < (unsigned int)banana_w && 
-                    (unsigned int)src_y < (unsigned int)banana_h) {
-                    *row_ptr = banana_grid[src_y * banana_w + src_x];
-                }
-                row_ptr++;
-                running_x_fp += cos_fp;
-                running_y_fp += sin_fp;
-            }
-            // Pixel 4
-            {
-                int src_x = running_x_fp >> FIXED_SHIFT;
-                int src_y = running_y_fp >> FIXED_SHIFT;
-                if ((unsigned int)src_x < (unsigned int)banana_w && 
-                    (unsigned int)src_y < (unsigned int)banana_h) {
-                    *row_ptr = banana_grid[src_y * banana_w + src_x];
-                }
-                row_ptr++;
-                running_x_fp += cos_fp;
-                running_y_fp += sin_fp;
-            }
-        }
-        
-        // Clean up any remaining pixels (0-3 pixels) one by one.
-        for (; xp <= max_xp; xp++) {
-            int src_x = running_x_fp >> FIXED_SHIFT;
-            int src_y = running_y_fp >> FIXED_SHIFT;
 
-            if ((unsigned int)src_x < (unsigned int)banana_w && 
-                (unsigned int)src_y < (unsigned int)banana_h) {
-                *row_ptr = banana_grid[src_y * banana_w + src_x];
-            }
-            row_ptr++;
-            running_x_fp += cos_fp;
-            running_y_fp += sin_fp;
+        for (; xp <= max_xp - 3; xp += 4) {
+            RENDER_PIXEL
+            RENDER_PIXEL
+            RENDER_PIXEL
+            RENDER_PIXEL
         }
+        
+        // Handle remaining pixels.
+        for (; xp <= max_xp; xp++) {
+            RENDER_PIXEL
+        }
+        
+        #undef RENDER_PIXEL
     }
 
-    // Restore newlines to the buffer (they were wiped by memset)
-    // We only need to touch the lines we potentially messed up? 
-    // No, memset cleared the WHOLE buffer. Newlines are GONE.
-    // Optimization: Only write newlines for the rows involved in bounding box?
-    // Safer: Just restore them all. It's fast linear memory write.
+    // Restore newlines cleared by memset.
     for(int i=0; i<SCREEN_HEIGHT; i++) {
         output[i * (SCREEN_WIDTH + 1) + SCREEN_WIDTH] = '\n';
     }
 
-    // Dump the whole frame to the terminal in one fast operation
+    // Flush frame buffer.
     printf("\x1b[H\x1b[33m");
     fwrite(output, sizeof(char), sizeof(output), stdout);
     printf("\x1b[0m");
