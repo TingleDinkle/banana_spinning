@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <math.h>
 #include <string.h>
+#include <signal.h>
 
 #if defined(_WIN32)
 #include <windows.h>
@@ -14,8 +15,11 @@
 #define PI 3.1415926535
 #define SCREEN_WIDTH 80
 #define SCREEN_HEIGHT 22
+#define FIXED_SHIFT 16
+#define FIXED_ONE (1 << FIXED_SHIFT)
 
-char output[SCREEN_WIDTH * SCREEN_HEIGHT];
+// Output buffer includes newlines: (Width + 1 for '\n') * Height
+char output[SCREEN_HEIGHT * (SCREEN_WIDTH + 1)];
 
 const char *banana_lines[] = {
     "_",
@@ -35,76 +39,117 @@ const char *banana_lines[] = {
 };
 
 size_t num_lines = sizeof(banana_lines) / sizeof(banana_lines[0]);
+size_t max_len = 0;
 
-// Allocate grid
-char **banana_grid = NULL;
+// Allocate flattened grid
+char *banana_grid = NULL;
+
+void cleanup_and_exit(int signo) {
+    if (signo == SIGINT) {
+        printf("\nAnimation stopped.\n");
+    }
+    if (banana_grid) free(banana_grid);
+    printf("\x1b[0m"); // Reset color
+    exit(0);
+}
 
 void init_grid() {
-    banana_grid = malloc(num_lines * sizeof(char *));
-    if (!banana_grid) exit(1);
+    // Find max length
     for (size_t i = 0; i < num_lines; i++) {
         size_t len = strlen(banana_lines[i]);
-        banana_grid[i] = malloc((len + 1) * sizeof(char));
-        if (!banana_grid[i]) exit(1);
-        strcpy(banana_grid[i], banana_lines[i]);
-        // Pad to max length? skip for simplicity
+        if (len > max_len) max_len = len;
+    }
+
+    // Allocate contiguous block
+    banana_grid = malloc(num_lines * max_len * sizeof(char));
+    if (!banana_grid) exit(1);
+    
+    // Fill with spaces
+    memset(banana_grid, ' ', num_lines * max_len);
+
+    // Copy data
+    for (size_t i = 0; i < num_lines; i++) {
+        size_t len = strlen(banana_lines[i]);
+        memcpy(&banana_grid[i * max_len], banana_lines[i], len);
     }
 }
 
 void free_grid() {
     if (banana_grid) {
-        for (size_t i = 0; i < num_lines; i++) {
-            if (banana_grid[i]) free(banana_grid[i]);
-        }
         free(banana_grid);
         banana_grid = NULL;
     }
 }
 
-size_t max_len = 0;
 void get_max_len() {
-    for (size_t i = 0; i < num_lines; i++) {
-        size_t len = strlen(banana_lines[i]);
-        if (len > max_len) max_len = len;
-    }
+   // Already handled in init_grid
 }
 
 double center_y, center_x;
 
 void render_frame(double A, double B) {
-
-    // Clear output
-    memset(output, ' ', SCREEN_WIDTH * SCREEN_HEIGHT);
+    // Fill with spaces
+    memset(output, ' ', sizeof(output));
+    
+    // Add newlines to buffer (could be done once if optimizing further, but memset clears it)
+    for(int i=0; i<SCREEN_HEIGHT; i++) {
+        output[i * (SCREEN_WIDTH + 1) + SCREEN_WIDTH] = '\n';
+    }
 
     double cos_theta = cos(-A);
     double sin_theta = sin(-A);
+    
+    // Convert trigonometry results to fixed-point integers (16.16 format)
+    // We scale by 65536 so '1.0' becomes '65536'
+    int cos_fp = (int)(cos_theta * FIXED_ONE);
+    int sin_fp = (int)(sin_theta * FIXED_ONE);
+    
+    // Precompute constants in fixed point
+    int center_x_fp = (int)(center_x * FIXED_ONE);
+    int center_y_fp = (int)(center_y * FIXED_ONE);
+    
+    // const_x = cx * (1 - cos) + cy * sin
+    // Note: We use long long intermediate to prevent overflow during multiplication
+    int const_x_fp = center_x_fp - ((long long)center_x_fp * cos_fp >> FIXED_SHIFT) + ((long long)center_y_fp * sin_fp >> FIXED_SHIFT);
+    int const_y_fp = center_y_fp - ((long long)center_y_fp * cos_fp >> FIXED_SHIFT) - ((long long)center_x_fp * sin_fp >> FIXED_SHIFT);
 
     for (int yp = 0; yp < SCREEN_HEIGHT; yp++) {
-        for (int xp = 0; xp < SCREEN_WIDTH; xp++) {
-            double dx = xp - center_x;
-            double dy = yp - center_y;
-            double src_x = dx * cos_theta - dy * sin_theta + center_x;
-            double src_y = dx * sin_theta + dy * cos_theta + center_y;
+        // Calculate row start using fixed point math
+        // row_start_x = -yp * sin + const_x
+        int row_start_x_fp = -(yp * sin_fp) + const_x_fp;
+        int row_start_y_fp =  (yp * cos_fp) + const_y_fp;
+        
+        // Initialize running coordinates
+        int running_x_fp = row_start_x_fp;
+        int running_y_fp = row_start_y_fp;
+        
+        int row_offset = yp * (SCREEN_WIDTH + 1);
 
+        for (int xp = 0; xp < SCREEN_WIDTH; xp++) {
+            // Bit-shift right to get the integer part (replaces slow float cast)
+            int src_x = running_x_fp >> FIXED_SHIFT;
+            int src_y = running_y_fp >> FIXED_SHIFT;
+
+            // Check if the rotated pixel lands on the banana
             if (src_x >= 0 && src_x < max_len && src_y >= 0 && src_y < num_lines) {
-                char ch = banana_grid[(int)src_y][(int)src_x];
-                output[yp * SCREEN_WIDTH + xp] = ch;
-            } else {
-                output[yp * SCREEN_WIDTH + xp] = ' ';
+                output[row_offset + xp] = banana_grid[src_y * max_len + src_x];
             }
+            
+            // Move to the next pixel using integer addition
+            running_x_fp += cos_fp;
+            running_y_fp += sin_fp;
         }
     }
 
-    // Add yellow color
+    // Dump the whole frame to the terminal in one fast operation
     printf("\x1b[H\x1b[33m");
-    for (int i = 0; i < SCREEN_WIDTH * SCREEN_HEIGHT; i++) {
-        putchar(output[i]);
-        if ((i + 1) % SCREEN_WIDTH == 0) putchar('\n');
-    }
+    fwrite(output, sizeof(char), sizeof(output), stdout);
     printf("\x1b[0m");
 }
 
 int main() {
+    signal(SIGINT, cleanup_and_exit);
+    
     get_max_len();
     init_grid();
     center_y = num_lines / 2.0;

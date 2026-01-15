@@ -34,26 +34,40 @@ center_anchor_y = len(banana_lines) / 2
 center_anchor_x = max(len(line) for line in banana_lines) / 2
 
 def render_frame(A, B):
-    print("\x1b[H\x1b[33m", end='')  # Start with color
-
     cos = math.cos(-A)
     sin = math.sin(-A)
 
+    # Precompute constants to save ops inside the loop
+    # src_x = (xp - cx) * cos - (yp - cy) * sin + cx
+    #       = xp*cos - yp*sin + (cx - cx*cos + cy*sin)
+    const_x = center_anchor_x * (1 - cos) + center_anchor_y * sin
+    const_y = center_anchor_y * (1 - cos) - center_anchor_x * sin
+    
+    frame_chars = []
+    # Add color and home cursor
+    frame_chars.append("\x1b[H\x1b[33m")
+    
+    banana_height = len(banana_grid)
+    banana_width = len(banana_grid[0])
+
     for yp in range(screen_height):
+        # Precompute Y component for this row
+        row_term_x = -yp * sin + const_x
+        row_term_y = yp * cos + const_y
+        
         for xp in range(screen_width):
-            dx = xp - center_anchor_x
-            dy = yp - center_anchor_y
-            src_x = dx * cos - dy * sin + center_anchor_x
-            src_y = dx * sin + dy * cos + center_anchor_y
+            src_x = int(xp * cos + row_term_x)
+            src_y = int(xp * sin + row_term_y)
 
-            if 0 <= src_x < len(banana_grid[0]) and 0 <= src_y < len(banana_grid):
-                char = banana_grid[int(src_y)][int(src_x)]
+            if 0 <= src_x < banana_width and 0 <= src_y < banana_height:
+                frame_chars.append(banana_grid[src_y][src_x])
             else:
-                char = ' '
-            print(char, end='')
-        print()
+                frame_chars.append(' ')
+        frame_chars.append('\n')
 
-    print("\x1b[0m", end='')  # Reset color
+    frame_chars.append("\x1b[0m")
+    # Print the entire frame in one go
+    print("".join(frame_chars), end='')
 
 A = 0
 B = 0
