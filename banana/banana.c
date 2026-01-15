@@ -99,43 +99,27 @@ void render_frame(double A, double B) {
     double cos_theta = cos(-A);
     double sin_theta = sin(-A);
     
-    // Convert trigonometry results to fixed-point integers (16.16 format)
+    // We use "Fixed Point" math here. Instead of using slow decimals, we multiply 
+    // everything by 65536 and use whole numbers. This is much faster for a computer.
     int cos_fp = (int)(cos_theta * FIXED_ONE);
     int sin_fp = (int)(sin_theta * FIXED_ONE);
     
-    // Precompute constants in fixed point
+    // We find the center of our banana so we can spin it around its middle.
     int center_x_fp = (int)(center_x * FIXED_ONE);
     int center_y_fp = (int)(center_y * FIXED_ONE);
     
-    // --- BOUNDING BOX OPTIMIZATION ---
-    // We only need to render pixels that might actually contain the banana.
-    // Project the 4 corners of the grid (0,0), (W,0), (0,H), (W,H) to screen space.
-    // Forward Transform: 
-    // xp = (gx - cx) * cos(A) - (gy - cy) * sin(A) + cx
-    // yp = (gx - cx) * sin(A) + (gy - cy) * cos(A) + cy
-    // Note: Our render loop uses -A (inverse), so Forward uses A.
-    // cos(A) = cos(-(-A)) = cos_theta
-    // sin(A) = sin(-(-A)) = -sin_theta
-    
-    // Corners relative to center (gx-cx, gy-cy)
+    // To save time, we calculate exactly where the banana is on the screen.
+    // We don't want to waste energy checking empty black space.
     double cx = center_x;
     double cy = center_y;
     double w = (double)max_len;
     double h = (double)num_lines;
     
-    // 4 Corners: Top-Left, Top-Right, Bot-Left, Bot-Right
     double corners_x[] = {-cx, w - cx, -cx, w - cx};
     double corners_y[] = {-cy, -cy, h - cy, h - cy};
     
     int min_xp = SCREEN_WIDTH, max_xp = 0;
     int min_yp = SCREEN_HEIGHT, max_yp = 0;
-    
-    // Use the same trig values (cos_theta, sin_theta) but aware of the sign change for forward transform
-    // Forward Rotation Matrix:
-    // | cos  -sin |
-    // | sin   cos |
-    // But our variables store cos(-A)=cos(A) and sin(-A)=-sin(A).
-    // So cos(A) = cos_theta, sin(A) = -sin_theta.
     
     double fwd_cos = cos_theta;
     double fwd_sin = -sin_theta;
@@ -150,42 +134,58 @@ void render_frame(double A, double B) {
         if (py > max_yp) max_yp = (int)ceil(py);
     }
     
-    // Clamp to screen bounds
+    // We make sure our "box" doesn't go off the edge of the terminal.
     if (min_xp < 0) min_xp = 0;
     if (max_xp >= SCREEN_WIDTH) max_xp = SCREEN_WIDTH - 1;
     if (min_yp < 0) min_yp = 0;
     if (max_yp >= SCREEN_HEIGHT) max_yp = SCREEN_HEIGHT - 1;
 
-    // --- RENDER LOOP (Fixed Point + Bounding Box) ---
-
-    // const_x = cx * (1 - cos) + cy * sin
+    // These values help us map screen pixels back to our banana image.
     int const_x_fp = center_x_fp - ((long long)center_x_fp * cos_fp >> FIXED_SHIFT) + ((long long)center_y_fp * sin_fp >> FIXED_SHIFT);
     int const_y_fp = center_y_fp - ((long long)center_y_fp * cos_fp >> FIXED_SHIFT) - ((long long)center_x_fp * sin_fp >> FIXED_SHIFT);
 
-    // Iterate only within the bounding box
+    int banana_w = (int)max_len;
+    int banana_h = (int)num_lines;
+
+    // We start drawing row by row.
     for (int yp = min_yp; yp <= max_yp; yp++) {
-        // Calculate row start using fixed point math
         int row_start_x_fp = -(yp * sin_fp) + const_x_fp;
         int row_start_y_fp =  (yp * cos_fp) + const_y_fp;
         
-        // Offset running coordinates to the start of the bounding box (min_xp)
-        // We can't just start at 0, we must advance the "running" vars to min_xp
         int running_x_fp = row_start_x_fp + min_xp * cos_fp;
         int running_y_fp = row_start_y_fp + min_xp * sin_fp;
         
-        int row_offset = yp * (SCREEN_WIDTH + 1);
+        // We point directly to the spot in memory where this row starts.
+        char *row_ptr = &output[yp * (SCREEN_WIDTH + 1) + min_xp];
 
-        for (int xp = min_xp; xp <= max_xp; xp++) {
-            // Bit-shift right to get the integer part
+        int xp = min_xp;
+        // Optimization: We process 4 pixels at a time to keep the CPU busy.
+        for (; xp <= max_xp - 3; xp += 4) {
+            for (int i = 0; i < 4; i++) {
+                int src_x = running_x_fp >> FIXED_SHIFT;
+                int src_y = running_y_fp >> FIXED_SHIFT;
+
+                // Check if we hit the banana. Using unsigned numbers lets us 
+                // check "too small" and "too big" in a single step.
+                if ((unsigned int)src_x < (unsigned int)banana_w && 
+                    (unsigned int)src_y < (unsigned int)banana_h) {
+                    *row_ptr = banana_grid[src_y * banana_w + src_x];
+                }
+                row_ptr++;
+                running_x_fp += cos_fp;
+                running_y_fp += sin_fp;
+            }
+        }
+        // If there are a few pixels left over, we finish them here.
+        for (; xp <= max_xp; xp++) {
             int src_x = running_x_fp >> FIXED_SHIFT;
             int src_y = running_y_fp >> FIXED_SHIFT;
 
-            // Check if the rotated pixel lands on the banana
-            if (src_x >= 0 && src_x < max_len && src_y >= 0 && src_y < num_lines) {
-                output[row_offset + xp] = banana_grid[src_y * max_len + src_x];
+            if ((unsigned int)src_x < (unsigned int)banana_w && 
+                (unsigned int)src_y < (unsigned int)banana_h) {
+                *row_ptr = banana_grid[src_y * banana_w + src_x];
             }
-            
-            // Move to the next pixel
+            row_ptr++;
             running_x_fp += cos_fp;
             running_y_fp += sin_fp;
         }
